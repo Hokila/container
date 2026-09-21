@@ -14,9 +14,24 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 
-import Containerization
 import ContainerizationError
 import Foundation
+import Containerization
+import OrderedCollections
+
+/// Errors that can be thrown during bundle creation or validation.
+public struct BundleError: AppError {
+    public var code: AppErrorCode
+    public var metadata: OrderedDictionary<String, String>
+    public var underlyingError: (any Error)? { nil }
+}
+
+extension AppErrorCode {
+    /// The provided initial filesystem format is not supported.
+    public static let unsupportedFilesystemFormat = AppErrorCode(rawValue: "unsupported_filesystem_format")
+    /// The provided initial filesystem type is invalid.
+    public static let invalidFilesystemType = AppErrorCode(rawValue: "invalid_filesystem_type")
+}
 
 public struct Bundle: Sendable {
     private static let initfsFilename = "initfs.ext4"
@@ -96,14 +111,20 @@ extension Bundle {
         switch initialFilesystem.type {
         case .block(let fmt, _, _):
             guard fmt == "ext4" else {
-                fatalError("ext4 is the only supported format for initial filesystem")
+                throw BundleError(
+                    code: .unsupportedFilesystemFormat,
+                    metadata: ["format": fmt, "supported": "ext4"]
+                )
             }
             // when saving the Initial Filesystem to the bundle
             // discard any filesystem information and just persist
             // the block into the Bundle.
             _ = try initialFilesystem.clone(to: path.appendingPathComponent(Self.initfsFilename).path)
         default:
-            fatalError("invalid filesystem type for initial filesystem")
+            throw BundleError(
+                code: .invalidFilesystemType,
+                metadata: ["reason": "initial filesystem must be a block device"]
+            )
         }
         let bundle = Bundle(path: path)
         if let containerConfiguration {
